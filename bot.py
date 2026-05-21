@@ -1,5 +1,5 @@
-# Telegram Bot - CC Dumps Extractor with Persistent Keyboard (Render compatible)
-# Fixed command handling – commands work now.
+# Telegram Bot - CC Dumps Extractor with Persistent Keyboard
+# Includes dummy HTTP server for Render web service compatibility
 
 import os
 import telebot
@@ -8,6 +8,8 @@ import requests
 import re
 import time
 import random
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from bs4 import BeautifulSoup
 from urllib.parse import quote_plus
 
@@ -15,6 +17,7 @@ from urllib.parse import quote_plus
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8380726917:AAH10UVMWwB0zG58t8u3AAZa6Sh2A0gn70A")
 ADMIN_ID = int(os.environ.get("ADMIN_ID", "7409867517"))
 TOR_ENABLED = os.environ.get("TOR_ENABLED", "false").lower() == "true"
+PORT = int(os.environ.get("PORT", 10000))
 # ===================================
 
 session = requests.Session()
@@ -139,7 +142,7 @@ def get_persistent_keyboard():
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# ========== COMMAND HANDLERS (must be defined before generic handler) ==========
+# ========== COMMAND HANDLERS ==========
 @bot.message_handler(commands=['start'])
 def start_cmd(msg):
     welcome = (
@@ -231,17 +234,33 @@ if TOR_ENABLED:
     def darkweb_cmd(msg):
         bot.reply_to(msg, "❌ Darkweb commands require additional setup. Contact admin.", reply_markup=get_persistent_keyboard())
 
-# ========== FALLBACK HANDLER – only for non-command messages ==========
 @bot.message_handler(func=lambda m: True)
 def handle_text(msg):
-    # If message starts with '/' but not a recognized command, suggest help.
     if msg.text.startswith('/'):
         bot.reply_to(msg, "❌ Unknown command. Type /help for available commands.", reply_markup=get_persistent_keyboard())
     else:
         bot.reply_to(msg, "⚠️ Please use the buttons below or type /help", reply_markup=get_persistent_keyboard())
 
+# ========== DUMMY HTTP SERVER FOR RENDER ==========
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/plain')
+        self.end_headers()
+        self.wfile.write(b'OK')
+    def log_message(self, format, *args):
+        pass  # Silence logs
+
+def run_http_server():
+    server = HTTPServer(('0.0.0.0', PORT), HealthHandler)
+    server.serve_forever()
+
 def main():
-    print("🔥 CC DUMP EXTRACTOR ACTIVE on Render 🔥")
+    # Start HTTP server in background thread
+    http_thread = threading.Thread(target=run_http_server, daemon=True)
+    http_thread.start()
+    print(f"🔥 CC DUMP EXTRACTOR ACTIVE on Render 🔥")
+    print(f"HTTP health check running on port {PORT}")
     print("Commands enabled: /start, /help, /dork, /pastebin, /forums, /all")
     bot.infinity_polling()
 
