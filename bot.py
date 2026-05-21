@@ -1,42 +1,26 @@
-# Telegram Bot - CC Dumps Extractor with Persistent Keyboard + Attractive Formatting
-# Install: pip install python-telegram-bot requests[socks] stem beautifulsoup4
-# Run with Tor service active (sudo systemctl start tor)
+# Telegram Bot - CC Dumps Extractor with Persistent Keyboard (Render compatible)
+# No Tor required for dork/pastebin/forums commands. Darkweb commands disabled.
 
+import os
 import telebot
 from telebot.types import ReplyKeyboardMarkup, KeyboardButton
 import requests
-import json
 import re
 import time
 import random
 from bs4 import BeautifulSoup
-from stem import Signal
-from stem.control import Controller
 from urllib.parse import quote_plus
 
 # ========== CONFIGURATION ==========
-BOT_TOKEN = "8380726917:AAH10UVMWwB0zG58t8u3AAZa6Sh2A0gn70A"
-TOR_SOCKS5 = "socks5://127.0.0.1:9050"
-# Active carding markets (Tor required) - Updated May 2026
-ONION_SITES = [
-    "http://briansclubcmrcck.onion",
-    "http://russianmarket.su",
-    "http://styxshop.onion",
-    "http://torzonmarket.onion",
-    "http://wtnorth.onion",
-    "http://blackstash.onion",
-]
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8380726917:AAH10UVMWwB0zG58t8u3AAZa6Sh2A0gn70A")
+ADMIN_ID = int(os.environ.get("ADMIN_ID", "7409867517"))
+TOR_ENABLED = os.environ.get("TOR_ENABLED", "false").lower() == "true"
 # ===================================
 
+# Session (no proxy by default)
 session = requests.Session()
-session.proxies = {'http': TOR_SOCKS5, 'https': TOR_SOCKS5}
 
-def renew_tor_ip():
-    with Controller.from_port(port=9051) as controller:
-        controller.authenticate(password="")
-        controller.signal(Signal.NEWNYM)
-        time.sleep(2)
-
+# Google dorking function
 def google_dork(query, max_results=10):
     encoded = quote_plus(query)
     search_url = f"https://www.google.com/search?q={encoded}&num={max_results}"
@@ -75,33 +59,6 @@ def extract_from_pastebin(url):
     except:
         return []
 
-def scan_onion_market(url, limit=10):
-    try:
-        resp = session.get(url, timeout=20)
-        if resp.status_code != 200:
-            return []
-        soup = BeautifulSoup(resp.text, 'html.parser')
-        dumps = []
-        patterns = [
-            r'(\d{15,16})\|(\d{2}/\d{2,4})\|(\d{3,4})',
-            r'(\d{15,16})\s+(\d{2}/\d{2,4})\s+(\d{3,4})',
-            r'cc[:\s]*(\d{15,16}).*?exp[:\s]*(\d{2}/\d{2,4}).*?cvv[:\s]*(\d{3,4})',
-            r'track1[:\s]*%?([B0-9]{15,19})\^.*?\^(\d{2}/\d{2,4})'
-        ]
-        for pattern in patterns:
-            for match in re.findall(pattern, resp.text, re.IGNORECASE | re.DOTALL):
-                if len(match) >= 2:
-                    dumps.append({
-                        'cc': match[0],
-                        'exp': match[1] if len(match) > 1 else 'N/A',
-                        'cvv': match[2] if len(match) > 2 else 'N/A',
-                        'track2': f";{match[0]}={match[1]}?",
-                        'source': url
-                    })
-        return dumps[:limit]
-    except:
-        return []
-
 def fetch_from_dorking(count):
     dork_queries = [
         'filetype:txt "card number" "expiration date"',
@@ -116,13 +73,13 @@ def fetch_from_dorking(count):
         'inurl:carding intext:"cc" -pastebin'
     ]
     all_dumps = []
-    for dork in dork_queries[:count]:
+    for dork in dork_queries[:max(1, count//5)]:
         results = google_dork(dork, max_results=3)
         for url in results:
             if url and isinstance(url, str):
                 dumps = extract_from_pastebin(url)
                 all_dumps.extend(dumps)
-        time.sleep(random.uniform(1, 3))
+        time.sleep(random.uniform(1, 2))
         if len(all_dumps) >= count:
             break
     return all_dumps[:count]
@@ -165,8 +122,6 @@ def format_dump_output(dumps, source_name):
     for idx, d in enumerate(dumps[:20], 1):
         cc_masked = f"{d['cc'][:6]}****{d['cc'][-4:]}"
         result += f"┌ **#{idx}**\n│ 💳 `{cc_masked}`\n│ 📅 Exp: `{d['exp']}`\n│ 🔐 CVV: `{d.get('cvv', 'N/A')}`\n"
-        if 'track2' in d:
-            result += f"│ 📀 Track2: `{d['track2'][:30]}...`\n"
         result += f"└ 🌐 `{d['source'][:40]}`\n━━━━━━━━━━━━━━━━━━\n"
         if len(result) > 3800:
             break
@@ -175,10 +130,12 @@ def format_dump_output(dumps, source_name):
 def get_persistent_keyboard():
     keyboard = ReplyKeyboardMarkup(row_width=2, resize_keyboard=True, one_time_keyboard=False)
     buttons = [
-        KeyboardButton("🔍 /dork"), KeyboardButton("🌑 /darkweb"),
-        KeyboardButton("📄 /pastebin"), KeyboardButton("💬 /forums"),
-        KeyboardButton("🎯 /all"), KeyboardButton("ℹ️ /help")
+        KeyboardButton("🔍 /dork"), KeyboardButton("📄 /pastebin"),
+        KeyboardButton("💬 /forums"), KeyboardButton("🎯 /all"),
+        KeyboardButton("ℹ️ /help")
     ]
+    if TOR_ENABLED:
+        buttons.insert(1, KeyboardButton("🌑 /darkweb"))
     keyboard.add(*buttons)
     return keyboard
 
@@ -187,10 +144,10 @@ bot = telebot.TeleBot(BOT_TOKEN)
 @bot.message_handler(commands=['start'])
 def start_cmd(msg):
     welcome = (
-        "✨ **CC DUMP EXTRACTOR v2.0** ✨\n"
+        "✨ **CC DUMP EXTRACTOR** ✨\n"
         "┌─────────────────────┐\n"
         "│  ✅ Persistent menu below\n"
-        "│  🌐 Uses: Tor + Dorks\n"
+        "│  🔍 Uses: Google Dorks + Pastebin\n"
         "│  ⚡ High-quality filter (Luhn)\n"
         "└─────────────────────┘\n\n"
         "⚙️ *Tap any button to extract dumps*"
@@ -203,13 +160,14 @@ def help_cmd(msg):
         "📖 **Command Guide**\n"
         "━━━━━━━━━━━━━━━━━\n"
         "🔍 `/dork <count>` – Google dorks for exposed dumps\n"
-        "🌑 `/darkweb <count>` – Scrape .onion markets (Tor required)\n"
         "📄 `/pastebin <count>` – Search pastebin-style sites\n"
         "💬 `/forums <count>` – Fetch carding forum links\n"
-        "🎯 `/all <count>` – Combine all sources\n"
+        "🎯 `/all <count>` – Combine dork + pastebin\n"
         "ℹ️ `/help` – This menu\n\n"
         "💡 *Example:* `/dork 15`"
     )
+    if TOR_ENABLED:
+        help_txt = help_txt.replace("📄 `/pastebin", "🌑 `/darkweb <count>` – Scrape .onion markets\n📄 `/pastebin")
     bot.send_message(msg.chat.id, help_txt, parse_mode="Markdown", reply_markup=get_persistent_keyboard())
 
 @bot.message_handler(commands=['dork'])
@@ -224,25 +182,6 @@ def dork_cmd(msg):
     dumps = fetch_from_dorking(count)
     filtered = high_quality_filter(dumps)
     result = format_dump_output(filtered, "GOOGLE DORK DUMPS")
-    bot.edit_message_text(result, msg.chat.id, status.message_id, parse_mode="Markdown", reply_markup=get_persistent_keyboard())
-
-@bot.message_handler(commands=['darkweb'])
-def darkweb_cmd(msg):
-    try:
-        parts = msg.text.split()
-        count = int(parts[1]) if len(parts) > 1 else 10
-        count = min(count, 30)
-    except:
-        count = 10
-    status = bot.reply_to(msg, "🌑 `Accessing darkweb markets via Tor...`\n⏳ *Please wait*", parse_mode="Markdown")
-    all_dumps = []
-    for site in ONION_SITES:
-        dumps = scan_onion_market(site, limit=count // len(ONION_SITES) + 1)
-        all_dumps.extend(dumps)
-        if len(all_dumps) >= count:
-            break
-    filtered = high_quality_filter(all_dumps)
-    result = format_dump_output(filtered, "DARKWEB MARKET DUMPS")
     bot.edit_message_text(result, msg.chat.id, status.message_id, parse_mode="Markdown", reply_markup=get_persistent_keyboard())
 
 @bot.message_handler(commands=['pastebin'])
@@ -284,23 +223,24 @@ def all_sources_cmd(msg):
         total = int(parts[1]) if len(parts) > 1 else 15
     except:
         total = 15
-    status = bot.reply_to(msg, "🔄 `Running ALL extraction methods...`\n⏳ *ETA: 2-3 minutes*", parse_mode="Markdown")
-    dumps = []
-    dumps.extend(fetch_from_dorking(total // 3))
-    for site in ONION_SITES[:3]:
-        dumps.extend(scan_onion_market(site, limit=total // 6))
+    status = bot.reply_to(msg, "🔄 `Running dork + pastebin...`\n⏳ *ETA: 1-2 minutes*", parse_mode="Markdown")
+    dumps = fetch_from_dorking(total)
     dumps = high_quality_filter(dumps)[:total]
-    result = format_dump_output(dumps, "COMBINED SOURCES")
+    result = format_dump_output(dumps, "COMBINED SOURCES (dork+pastebin)")
     bot.edit_message_text(result, msg.chat.id, status.message_id, parse_mode="Markdown", reply_markup=get_persistent_keyboard())
+
+if TOR_ENABLED:
+    @bot.message_handler(commands=['darkweb'])
+    def darkweb_cmd(msg):
+        bot.reply_to(msg, "❌ Darkweb commands require additional setup. Contact admin.", reply_markup=get_persistent_keyboard())
 
 @bot.message_handler(func=lambda m: True)
 def handle_text(msg):
-    # If user types something not a command, show keyboard hint
     bot.send_message(msg.chat.id, "⚠️ Please use the buttons below or type /help", reply_markup=get_persistent_keyboard())
 
 def main():
-    print("🔥 CC DUMP EXTRACTOR v2.0 ACTIVE 🔥")
-    print("Persistent keyboard enabled. Tor required.")
+    print("🔥 CC DUMP EXTRACTOR ACTIVE on Render 🔥")
+    print("Tor disabled. Using dork + pastebin only.")
     bot.infinity_polling()
 
 if __name__ == "__main__":
