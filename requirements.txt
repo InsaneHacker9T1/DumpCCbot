@@ -1,5 +1,4 @@
-python-telegram-bot==20.7
+pyTelegramBotAPI==4.16.0
 requests[socks]==2.31.0
-stem==1.8.2
 beautifulsoup4==4.12.3
 PySocks==1.7.1
