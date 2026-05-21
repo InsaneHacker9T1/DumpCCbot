@@ -1,5 +1,5 @@
 # Telegram Bot - CC Dumps Extractor with Persistent Keyboard (Render compatible)
-# No Tor required for dork/pastebin/forums commands. Darkweb commands disabled.
+# Fixed command handling – commands work now.
 
 import os
 import telebot
@@ -17,10 +17,8 @@ ADMIN_ID = int(os.environ.get("ADMIN_ID", "7409867517"))
 TOR_ENABLED = os.environ.get("TOR_ENABLED", "false").lower() == "true"
 # ===================================
 
-# Session (no proxy by default)
 session = requests.Session()
 
-# Google dorking function
 def google_dork(query, max_results=10):
     encoded = quote_plus(query)
     search_url = f"https://www.google.com/search?q={encoded}&num={max_results}"
@@ -141,6 +139,7 @@ def get_persistent_keyboard():
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
+# ========== COMMAND HANDLERS (must be defined before generic handler) ==========
 @bot.message_handler(commands=['start'])
 def start_cmd(msg):
     welcome = (
@@ -161,13 +160,11 @@ def help_cmd(msg):
         "━━━━━━━━━━━━━━━━━\n"
         "🔍 `/dork <count>` – Google dorks for exposed dumps\n"
         "📄 `/pastebin <count>` – Search pastebin-style sites\n"
-        "💬 `/forums <count>` – Fetch carding forum links\n"
+        "💬 `/forums` – Fetch carding forum links\n"
         "🎯 `/all <count>` – Combine dork + pastebin\n"
         "ℹ️ `/help` – This menu\n\n"
         "💡 *Example:* `/dork 15`"
     )
-    if TOR_ENABLED:
-        help_txt = help_txt.replace("📄 `/pastebin", "🌑 `/darkweb <count>` – Scrape .onion markets\n📄 `/pastebin")
     bot.send_message(msg.chat.id, help_txt, parse_mode="Markdown", reply_markup=get_persistent_keyboard())
 
 @bot.message_handler(commands=['dork'])
@@ -234,13 +231,18 @@ if TOR_ENABLED:
     def darkweb_cmd(msg):
         bot.reply_to(msg, "❌ Darkweb commands require additional setup. Contact admin.", reply_markup=get_persistent_keyboard())
 
+# ========== FALLBACK HANDLER – only for non-command messages ==========
 @bot.message_handler(func=lambda m: True)
 def handle_text(msg):
-    bot.send_message(msg.chat.id, "⚠️ Please use the buttons below or type /help", reply_markup=get_persistent_keyboard())
+    # If message starts with '/' but not a recognized command, suggest help.
+    if msg.text.startswith('/'):
+        bot.reply_to(msg, "❌ Unknown command. Type /help for available commands.", reply_markup=get_persistent_keyboard())
+    else:
+        bot.reply_to(msg, "⚠️ Please use the buttons below or type /help", reply_markup=get_persistent_keyboard())
 
 def main():
     print("🔥 CC DUMP EXTRACTOR ACTIVE on Render 🔥")
-    print("Tor disabled. Using dork + pastebin only.")
+    print("Commands enabled: /start, /help, /dork, /pastebin, /forums, /all")
     bot.infinity_polling()
 
 if __name__ == "__main__":
