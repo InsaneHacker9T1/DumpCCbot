@@ -1,0 +1,5 @@
+python-telegram-bot==20.7
+requests[socks]==2.31.0
+stem==1.8.2
+beautifulsoup4==4.12.3
+socksipy==1.01
